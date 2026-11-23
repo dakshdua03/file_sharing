@@ -1,4 +1,4 @@
-"""SQLite database setup for Slice 3: Users, Files, and Envelope Key Shares."""
+"""SQLite database setup for Slice 4: Users, Files, and Time-Restricted/Revocable Shares."""
 
 import sqlite3
 from pathlib import Path
@@ -16,7 +16,7 @@ def get_conn() -> sqlite3.Connection:
 
 
 def init_db() -> None:
-    """Create local storage directory and schema for Slice 3."""
+    """Create local storage directory and schema for Slice 4."""
     STORAGE_DIR.mkdir(parents=True, exist_ok=True)
     with get_conn() as conn:
         conn.executescript(
@@ -48,7 +48,10 @@ def init_db() -> None:
                 file_id TEXT NOT NULL,
                 recipient_id TEXT NOT NULL,
                 wrapped_key_hex TEXT NOT NULL,
+                expires_at TEXT,
+                revoked INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT NOT NULL,
+                revoked_at TEXT,
                 UNIQUE(file_id, recipient_id),
                 FOREIGN KEY(file_id) REFERENCES files(id),
                 FOREIGN KEY(recipient_id) REFERENCES users(id)
