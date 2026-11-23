@@ -1,4 +1,4 @@
-"""SQLite database setup and helpers for the MVP."""
+"""SQLite database setup and helpers for MVP Slice 2 (AES-GCM Encryption)."""
 
 import sqlite3
 from pathlib import Path
@@ -25,8 +25,11 @@ def init_db() -> None:
                 id TEXT PRIMARY KEY,
                 original_name TEXT NOT NULL,
                 content_type TEXT NOT NULL,
-                size_bytes INTEGER NOT NULL,
+                plaintext_size INTEGER NOT NULL,
+                ciphertext_size INTEGER NOT NULL,
                 storage_path TEXT NOT NULL,
+                nonce_hex TEXT NOT NULL,
+                key_hex TEXT NOT NULL,
                 created_at TEXT NOT NULL
             )
             """
