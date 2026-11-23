@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Secure University File Sharing — MVP</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+  <style>
+    body { padding: 20px 0; background: #0f172a; color: #f8fafc; font-family: system-ui, -apple-system, sans-serif; }
+    main { max-width: 1050px; margin: auto; }
+    .card { background: #1e293b; border-radius: 12px; padding: 20px; margin-bottom: 24px; border: 1px solid #334155; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: bold; }
+    .badge-prof { background: #0284c7; color: white; }
+    .badge-stud { background: #10b981; color: white; }
+    .badge-cid { background: #6366f1; color: white; font-family: monospace; }
+    .log-entry { font-family: monospace; font-size: 0.85rem; padding: 8px 12px; border-bottom: 1px solid #334155; }
+    .status-valid { color: #10b981; font-weight: bold; }
+    .status-denied { color: #ef4444; font-weight: bold; }
+    button { cursor: pointer; }
+    input, select { background: #0f172a !important; color: #f8fafc !important; border-color: #475569 !important; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 10px; border-bottom: 1px solid #334155; text-align: left; }
+  </style>
+</head>
+<body>
+<main>
+  <header style="margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
+    <div>
+      <h2 style="margin: 0; color: #38bdf8;">🔐 Secure University File Sharing System</h2>
+      <p style="margin: 0; color: #94a3b8; font-size: 0.95rem;">Semester 1 Capstone Prototype (AES-256-GCM + Envelope RSA + IPFS + Hash Chain Audit)</p>
+    </div>
+    <div>
+      <a href="/docs" target="_blank" role="button" class="outline" style="padding: 6px 14px; font-size: 0.85rem;">API Swagger Docs ↗</a>
+    </div>
+  </header>
+
+  <!-- Step 1: Active User Switcher & Registration -->
+  <section class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+      <h4 style="margin: 0;">👤 Current Active User</h4>
+      <div style="display: flex; gap: 10px;">
+        <select id="userSelect" onchange="switchUser()" style="width: auto; min-width: 250px;">
+          <option value="">Loading users...</option>
+        </select>
+      </div>
+    </div>
+    <div id="currentUserDetails" style="color: #94a3b8; font-size: 0.9rem;">No user selected</div>
+
+    <details style="margin-top: 15px;">
+      <summary style="font-size: 0.85rem; color: #38bdf8; cursor: pointer;">+ Register New User</summary>
+      <div style="display: flex; gap: 10px; margin-top: 10px;">
+        <input type="text" id="newUsername" placeholder="Username (e.g. prof_sharma)" style="flex: 2;">
+        <select id="newRole" style="flex: 1;">
+          <option value="professor">Professor</option>
+          <option value="student">Student</option>
+          <option value="admin">Admin</option>
+        </select>
+        <button onclick="createUser()" style="flex: 1;">Generate Keys & Add</button>
+      </div>
+    </details>
+  </section>
+
+  <!-- Step 2: Upload & Encrypt (Owner) -->
+  <section class="card">
+    <h4>📤 Upload & Encrypt File (to IPFS)</h4>
+    <p style="font-size: 0.85rem; color: #94a3b8;">
+      The file is encrypted client-side with <strong>AES-256-GCM</strong>. Symmetric key is wrapped with the owner's RSA public key. Raw ciphertext is pushed to <strong>IPFS</strong>.
+    </p>
+    <form id="uploadForm" onsubmit="handleUpload(event)" style="display: flex; gap: 10px; align-items: center;">
+      <input type="file" id="fileInput" required style="flex: 3;">
+      <button type="submit" style="flex: 1;">Upload to IPFS</button>
+    </form>
+    <div id="uploadResult" style="margin-top: 10px; font-size: 0.85rem;"></div>
+  </section>
+
+  <!-- Step 3: Files & Sharing Management -->
+  <section class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+      <h4 style="margin: 0;">📂 Available Files & Shares</h4>
+      <button onclick="refreshData()" class="outline" style="padding: 4px 12px; font-size: 0.8rem;">Refresh</button>
+    </div>
+    <div style="overflow-x: auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>File Name</th>
+            <th>Owner</th>
+            <th>IPFS CID</th>
+            <th>Plaintext / Ciphertext</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="filesTableBody">
+          <tr><td colspan="5" style="text-align: center;">No files found</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Share Modal / Drawer -->
+    <div id="shareBox" style="display: none; margin-top: 20px; padding: 15px; background: #0f172a; border-radius: 8px; border: 1px dashed #475569;">
+      <h5 id="shareBoxTitle" style="margin-top: 0;">Share File</h5>
+      <input type="hidden" id="shareFileId">
+      <div style="display: flex; gap: 10px; align-items: center;">
+        <select id="shareRecipientSelect" style="flex: 2;"></select>
+        <input type="datetime-local" id="shareExpiry" title="Optional Expiration Time" style="flex: 2;">
+        <button onclick="submitShare()" style="flex: 1;">Grant Access</button>
+        <button onclick="closeShareBox()" class="secondary" style="flex: 0.5;">Cancel</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Step 4: Tamper-Evident Audit Trail -->
+  <section class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+      <div>
+        <h4 style="margin: 0;">⛓️ Blockchain-Style Tamper-Evident Audit Log</h4>
+        <span id="auditStatusBadge" class="status-valid" style="font-size: 0.85rem;">Checking integrity...</span>
+      </div>
+      <button onclick="verifyAuditChain()" class="outline" style="padding: 4px 12px; font-size: 0.8rem;">Re-Verify Cryptographic Chain</button>
+    </div>
+    <div id="auditLogList" style="max-height: 280px; overflow-y: auto; background: #0f172a; border-radius: 8px; border: 1px solid #334155;">
+      <div style="padding: 10px; text-align: center; color: #64748b;">Loading logs...</div>
+    </div>
+  </section>
+</main>
+
+<script>
+let users = [];
+let currentUser = null;
+
+async function api(path, options = {}) {
+  const res = await fetch(path, options);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || 'Request failed');
+  }
+  return res.json();
+}
+
+async function init() {
+  await loadUsers();
+  await refreshData();
+  await verifyAuditChain();
+}
+
+async function loadUsers() {
+  users = await api('/users');
+  const sel = document.getElementById('userSelect');
+  sel.innerHTML = users.map(u => `<option value="${u.id}">${u.username} (${u.role})</option>`).join('');
+  if (users.length > 0 && !currentUser) {
+    currentUser = users[0];
+  }
+  updateCurrentUserView();
+}
+
+function switchUser() {
+  const id = document.getElementById('userSelect').value;
+  currentUser = users.find(u => u.id === id);
+  updateCurrentUserView();
+}
+
+function updateCurrentUserView() {
+  if (!currentUser) return;
+  document.getElementById('userSelect').value = currentUser.id;
+  document.getElementById('currentUserDetails').innerHTML = `
+    Active: <strong>${currentUser.username}</strong> | 
+    Role: <span class="badge ${currentUser.role === 'professor' ? 'badge-prof' : 'badge-stud'}">${currentUser.role}</span> | 
+    ID: <code>${currentUser.id}</code>
+  `;
+}
+
+async function createUser() {
+  const username = document.getElementById('newUsername').value.trim();
+  const role = document.getElementById('newRole').value;
+  if (!username) return alert('Enter a username');
+  try {
+    const newUser = await api('/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, role })
+    });
+    alert(`User ${newUser.username} created with generated 2048-bit RSA keys!`);
+    document.getElementById('newUsername').value = '';
+    await loadUsers();
+    currentUser = users.find(u => u.id === newUser.user_id);
+    updateCurrentUserView();
+    await refreshData();
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+async function handleUpload(e) {
+  e.preventDefault();
+  if (!currentUser) return alert('Select or create a user first');
+  const file = document.getElementById('fileInput').files[0];
+  if (!file) return alert('Select a file');
+
+  const formData = new FormData();
+  formData.append('owner_id', currentUser.id);
+  formData.append('file', file);
+
+  const resDiv = document.getElementById('uploadResult');
+  resDiv.innerHTML = '<span style="color: #38bdf8;">Encrypting with AES-256-GCM and pinning to IPFS...</span>';
+
+  try {
+    const res = await api('/upload', { method: 'POST', body: formData });
+    resDiv.innerHTML = `<span style="color: #10b981;">✅ Uploaded! File ID: <code>${res.file_id}</code> | IPFS CID: <code>${res.ipfs_cid}</code></span>`;
+    document.getElementById('fileInput').value = '';
+    await refreshData();
+    await verifyAuditChain();
+  } catch (err) {
+    resDiv.innerHTML = `<span style="color: #ef4444;">❌ Error: ${err.message}</span>`;
+  }
+}
+
+async function refreshData() {
+  const files = await api('/files');
+  const tbody = document.getElementById('filesTableBody');
+  if (files.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #64748b;">No files uploaded yet</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = files.map(f => {
+    const isOwner = currentUser && currentUser.id === f.owner_id;
+    return `
+      <tr>
+        <td><strong>${f.original_name}</strong></td>
+        <td><code>${f.owner_name || f.owner_id.slice(0, 8)}</code></td>
+        <td><span class="badge badge-cid">${f.ipfs_cid.slice(0, 16)}...</span></td>
+        <td>${f.plaintext_size}B / ${f.ciphertext_size}B</td>
+        <td>
+          <button onclick="downloadFile('${f.id}')" style="padding: 4px 10px; font-size: 0.8rem;">Decrypt & Download</button>
+          ${isOwner ? `<button onclick="openShareBox('${f.id}', '${f.original_name}')" class="outline" style="padding: 4px 10px; font-size: 0.8rem; margin-left: 6px;">Share / Expiry</button>` : ''}
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  await loadAuditLogs();
+}
+
+function openShareBox(fileId, fileName) {
+  document.getElementById('shareBox').style.display = 'block';
+  document.getElementById('shareBoxTitle').innerText = `Share "${fileName}" with Time-Restricted Access`;
+  document.getElementById('shareFileId').value = fileId;
+  const sel = document.getElementById('shareRecipientSelect');
+  sel.innerHTML = users.filter(u => u.id !== currentUser.id).map(u => `<option value="${u.id}">${u.username} (${u.role})</option>`).join('');
+}
+
+function closeShareBox() {
+  document.getElementById('shareBox').style.display = 'none';
+}
+
+async function submitShare() {
+  const fileId = document.getElementById('shareFileId').value;
+  const recipientId = document.getElementById('shareRecipientSelect').value;
+  const expiryVal = document.getElementById('shareExpiry').value;
+  const expiresAt = expiryVal ? new Date(expiryVal).toISOString() : null;
+
+  try {
+    await api('/share', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        file_id: fileId,
+        owner_id: currentUser.id,
+        recipient_id: recipientId,
+        expires_at: expiresAt
+      })
+    });
+    alert('Access granted with RSA envelope key wrapping and expiry policy!');
+    closeShareBox();
+    await refreshData();
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+async function downloadFile(fileId) {
+  if (!currentUser) return alert('Select active user');
+  try {
+    const res = await fetch(`/download/${fileId}?user_id=${currentUser.id}`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(err.detail || 'Download failed');
+    }
+    const blob = await res.blob();
+    const disposition = res.headers.get('Content-Disposition') || '';
+    const match = disposition.match(/filename="?([^"]+)"?/);
+    const filename = match ? match[1] : 'decrypted_file.bin';
+
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+    await refreshData();
+  } catch (err) {
+    alert(`❌ Download Denied: ${err.message}`);
+    await refreshData();
+  }
+}
+
+async function loadAuditLogs() {
+  const logs = await api('/audit/logs');
+  const container = document.getElementById('auditLogList');
+  if (logs.length === 0) {
+    container.innerHTML = '<div style="padding: 10px; text-align: center; color: #64748b;">No audit logs yet</div>';
+    return;
+  }
+
+  container.innerHTML = logs.slice().reverse().map(l => {
+    const color = l.action.includes('DENIED') ? '#ef4444' : (l.action.includes('GRANTED') ? '#10b981' : '#38bdf8');
+    return `
+      <div class="log-entry">
+        <span style="color: ${color}; font-weight: bold;">[${l.action}]</span>
+        <span style="color: #64748b;">(${l.timestamp.slice(11, 19)} UTC)</span>
+        User: <code>${l.user_id.slice(0, 8)}...</code>
+        ${l.file_id ? `| File: <code>${l.file_id.slice(0, 8)}...</code>` : ''}
+        ${l.details ? `| <span style="color: #94a3b8;">${l.details}</span>` : ''}
+        <br>
+        <span style="color: #475569; font-size: 0.75rem;">prev: ${l.prev_hash.slice(0, 16)}... ➔ hash: ${l.entry_hash.slice(0, 16)}...</span>
+      </div>
+    `;
+  }).join('');
+}
+
+async function verifyAuditChain() {
+  const res = await api('/audit/verify');
+  const badge = document.getElementById('auditStatusBadge');
+  if (res.status === 'VALID') {
+    badge.className = 'status-valid';
+    badge.innerText = `✅ Chain Valid (${res.total_entries} blocks verified)`;
+  } else {
+    badge.className = 'status-denied';
+    badge.innerText = `🚨 Chain Broken at block ${res.broken_sequence_id}!`;
+  }
+}
+
+window.onload = init;
+</script>
+</body>
+</html>

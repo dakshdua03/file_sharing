@@ -1,4 +1,4 @@
-"""SQLite database setup for Slice 5: adding tamper-evident Audit Log."""
+"""SQLite database setup for Slice 6: adding IPFS CID tracking."""
 
 import hashlib
 import sqlite3
@@ -8,7 +8,6 @@ BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = BASE_DIR / "mvp.db"
 STORAGE_DIR = BASE_DIR / "storage"
 
-# Genesis hash for the initial entry in the audit hash chain
 GENESIS_HASH = "0" * 64
 
 
@@ -39,6 +38,7 @@ def init_db() -> None:
                 content_type TEXT NOT NULL,
                 plaintext_size INTEGER NOT NULL,
                 ciphertext_size INTEGER NOT NULL,
+                ipfs_cid TEXT NOT NULL,
                 storage_path TEXT NOT NULL,
                 nonce_hex TEXT NOT NULL,
                 created_at TEXT NOT NULL,
@@ -77,7 +77,6 @@ def init_db() -> None:
 def compute_entry_hash(
     seq_id: int, timestamp: str, user_id: str, file_id: str, action: str, details: str, prev_hash: str
 ) -> str:
-    """Compute SHA-256 over all fields of the audit log row chained to prev_hash."""
     payload = f"{seq_id}|{timestamp}|{user_id}|{file_id or ''}|{action}|{details or ''}|{prev_hash}"
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
@@ -90,10 +89,6 @@ def append_audit_log(
     file_id: str = None,
     details: str = None,
 ) -> dict:
-    """
-    Append an entry to the tamper-evident hash chain.
-    Retrieves the last entry's hash (or GENESIS_HASH) and links the new entry.
-    """
     last_row = conn.execute(
         "SELECT sequence_id, entry_hash FROM audit_logs ORDER BY sequence_id DESC LIMIT 1"
     ).fetchone()

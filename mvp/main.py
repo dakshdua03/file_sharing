@@ -1,14 +1,12 @@
-"""Slice 5 MVP: Tamper-Evident Audit Log using Hash Chains.
+"""Slice 6 MVP: IPFS Decentralized Storage + Web Dashboard Interface.
 
-Every security event is logged in an append-only hash chain:
-- User registration
-- File upload
-- Share creation
-- Download attempts (both granted and denied)
-- Access revocation
-
-Verification endpoint (`GET /audit/verify`) traverses the entire log chain and checks
-if any row, timestamp, user, or action was tampered with.
+Complete Semester 1 Baseline Prototype:
+- Bulk Encryption: AES-256-GCM.
+- Key Wrapping: RSA-OAEP for authorized recipients.
+- Decentralized Storage: Ciphertexts stored with real IPFS CIDv1 identifiers (Pinata cloud or local IPFS node).
+- Policy: Time-to-Live Expiry + Immediate Revocation.
+- Tamper-Evident Audit Log: Hash-chained audit entries with cryptographic verification.
+- User Dashboard: Full Single-Page Web UI served at `/`.
 """
 
 from contextlib import asynccontextmanager
@@ -19,7 +17,7 @@ import uuid
 
 from cryptography.exceptions import InvalidTag
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import Response
+from fastapi.responses import FileResponse, HTMLResponse, Response
 from pydantic import BaseModel
 
 from crypto import (
@@ -32,12 +30,16 @@ from crypto import (
 )
 from db import (
     GENESIS_HASH,
-    STORAGE_DIR,
     append_audit_log,
     compute_entry_hash,
     get_conn,
     init_db,
 )
+from ipfs import IPFSClient
+
+BASE_DIR = Path(__file__).resolve().parent
+HTML_INDEX = BASE_DIR / "templates" / "index.html"
+ipfs_client = IPFSClient()
 
 
 @asynccontextmanager
@@ -47,9 +49,9 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(
-    title="Secure File Sharing MVP (Slice 5 - Tamper-Evident Audit Log)",
-    description="Time-restricted sharing with cryptographic hash-chained audit logging and verification.",
-    version="0.5.0",
+    title="Secure University File Sharing — MVP (Slice 6)",
+    description="AES-GCM encryption, RSA envelope sharing, IPFS decentralized storage, and hash-chain audit.",
+    version="0.6.0",
     lifespan=lifespan,
 )
 
@@ -72,9 +74,20 @@ class RevokeRequest(BaseModel):
     recipient_id: str
 
 
+# ---------------- Web Interface Dashboard ----------------
+
+
+@app.get("/", response_class=HTMLResponse)
+def index_view():
+    """Serve the single-page user web dashboard."""
+    if not HTML_INDEX.is_file():
+        raise HTTPException(status_code=404, detail="Web dashboard template not found")
+    return HTMLResponse(content=HTML_INDEX.read_text(encoding="utf-8"))
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "ok", "slice": "5-audit-log"}
+    return {"status": "ok", "slice": "6-ipfs-ui"}
 
 
 # ---------------- User Endpoints ----------------
@@ -122,7 +135,7 @@ def list_users() -> list[dict]:
     return [dict(row) for row in rows]
 
 
-# ---------------- Upload Endpoint ----------------
+# ---------------- Upload to IPFS with Envelope Encryption ----------------
 
 
 @app.post("/upload")
@@ -141,12 +154,16 @@ async def upload_file(
 
     file_id = uuid.uuid4().hex
     safe_name = Path(file.filename or "unnamed.bin").name
-    dest_path = STORAGE_DIR / f"{file_id}_{safe_name}.enc"
 
+    # 1. Symmetric encryption of bulk bytes
     file_key = generate_file_key()
     ciphertext, nonce = encrypt_file(plaintext, file_key)
-    dest_path.write_bytes(ciphertext)
 
+    # 2. Push ciphertext to IPFS (returns CIDv1)
+    ipfs_meta = ipfs_client.upload_encrypted(ciphertext, safe_name)
+    cid = ipfs_meta["cid"]
+
+    # 3. Wrap file_key with owner's RSA public key
     wrapped_owner_key = wrap_key(file_key, owner["public_key_pem"])
     created_at = datetime.now(timezone.utc).isoformat()
     content_type = file.content_type or "application/octet-stream"
@@ -156,9 +173,9 @@ async def upload_file(
             """
             INSERT INTO files (
                 id, owner_id, original_name, content_type,
-                plaintext_size, ciphertext_size, storage_path, nonce_hex, created_at
+                plaintext_size, ciphertext_size, ipfs_cid, storage_path, nonce_hex, created_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 file_id,
@@ -167,7 +184,8 @@ async def upload_file(
                 content_type,
                 len(plaintext),
                 len(ciphertext),
-                str(dest_path),
+                cid,
+                ipfs_meta["storage_path"],
                 nonce.hex(),
                 created_at,
             ),
@@ -183,9 +201,9 @@ async def upload_file(
             conn,
             timestamp=created_at,
             user_id=owner_id,
-            action="FILE_UPLOADED",
+            action="FILE_UPLOADED_TO_IPFS",
             file_id=file_id,
-            details=f"filename={safe_name}, size={len(plaintext)}",
+            details=f"filename={safe_name}, cid={cid}",
         )
         conn.commit()
 
@@ -193,10 +211,26 @@ async def upload_file(
         "file_id": file_id,
         "owner_id": owner_id,
         "filename": safe_name,
+        "ipfs_cid": cid,
         "plaintext_size": len(plaintext),
         "ciphertext_size": len(ciphertext),
         "created_at": created_at,
     }
+
+
+@app.get("/files")
+def list_files() -> list[dict]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT f.id, f.owner_id, u.username as owner_name, f.original_name,
+                   f.content_type, f.plaintext_size, f.ciphertext_size, f.ipfs_cid, f.created_at
+            FROM files f
+            JOIN users u ON f.owner_id = u.id
+            ORDER BY f.created_at DESC
+            """
+        ).fetchall()
+    return [dict(row) for row in rows]
 
 
 # ---------------- Sharing & Revocation ----------------
@@ -277,8 +311,6 @@ def revoke_access(req: RevokeRequest) -> dict:
             raise HTTPException(status_code=404, detail="File not found")
         if file_row["owner_id"] != req.owner_id:
             raise HTTPException(status_code=403, detail="Only owner can revoke access")
-        if req.owner_id == req.recipient_id:
-            raise HTTPException(status_code=400, detail="Cannot revoke owner's own access")
 
         revoked_at = datetime.now(timezone.utc).isoformat()
         cur = conn.execute(
@@ -302,16 +334,10 @@ def revoke_access(req: RevokeRequest) -> dict:
         )
         conn.commit()
 
-    return {
-        "file_id": req.file_id,
-        "recipient_id": req.recipient_id,
-        "revoked": True,
-        "revoked_at": revoked_at,
-        "status": "revoked_successfully",
-    }
+    return {"status": "revoked_successfully", "revoked_at": revoked_at}
 
 
-# ---------------- Download with Audit Logging ----------------
+# ---------------- Download & Decrypt from IPFS ----------------
 
 
 @app.get("/download/{file_id}")
@@ -352,22 +378,27 @@ def download_file(file_id: str, user_id: str) -> Response:
                 conn.commit()
                 raise HTTPException(status_code=403, detail=f"Access denied: access link expired at {share['expires_at']}")
 
-        append_audit_log(conn, now_iso, user_id, "DOWNLOAD_GRANTED", file_id, "success")
+        append_audit_log(conn, now_iso, user_id, "DOWNLOAD_GRANTED", file_id, f"ipfs_cid={file_row['ipfs_cid']}")
         conn.commit()
 
+    # 1. Unwrap symmetric file key with recipient's private key
     try:
         file_key = unwrap_key(bytes.fromhex(share["wrapped_key_hex"]), share["private_key_pem"])
     except Exception:
         raise HTTPException(status_code=400, detail="Key unwrapping failed")
 
-    ciphertext_path = Path(file_row["storage_path"])
-    ciphertext = ciphertext_path.read_bytes()
-    nonce = bytes.fromhex(file_row["nonce_hex"])
+    # 2. Fetch encrypted ciphertext from IPFS via CID
+    try:
+        ciphertext = ipfs_client.fetch_encrypted(file_row["ipfs_cid"])
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Ciphertext not found on IPFS")
 
+    # 3. Decrypt ciphertext with AES-256-GCM
+    nonce = bytes.fromhex(file_row["nonce_hex"])
     try:
         plaintext = decrypt_file(ciphertext, file_key, nonce)
     except InvalidTag:
-        raise HTTPException(status_code=400, detail="Tamper check failed on download")
+        raise HTTPException(status_code=400, detail="Tamper check failed on IPFS download")
 
     headers = {
         "Content-Disposition": f'attachment; filename="{file_row["original_name"]}"'
@@ -375,12 +406,11 @@ def download_file(file_id: str, user_id: str) -> Response:
     return Response(content=plaintext, media_type=file_row["content_type"], headers=headers)
 
 
-# ---------------- Audit Log Inspection & Verification ----------------
+# ---------------- Audit Endpoints ----------------
 
 
 @app.get("/audit/logs")
 def get_audit_logs() -> list[dict]:
-    """Retrieve full audit log entries with previous and entry hashes."""
     with get_conn() as conn:
         rows = conn.execute("SELECT * FROM audit_logs ORDER BY sequence_id ASC").fetchall()
     return [dict(row) for row in rows]
@@ -388,30 +418,22 @@ def get_audit_logs() -> list[dict]:
 
 @app.get("/audit/verify")
 def verify_audit_chain() -> dict:
-    """
-    Cryptographically verify the integrity of the audit log hash chain.
-    Traverses each row from sequence 1 onwards:
-    - Verifies prev_hash equals previous row's entry_hash.
-    - Recalculates SHA-256 over row fields and asserts equality with stored entry_hash.
-    """
     with get_conn() as conn:
         rows = conn.execute("SELECT * FROM audit_logs ORDER BY sequence_id ASC").fetchall()
 
     if not rows:
-        return {"status": "valid", "total_entries": 0, "message": "Audit log is empty"}
+        return {"status": "VALID", "total_entries": 0, "message": "Audit log is empty"}
 
     expected_prev = GENESIS_HASH
     for row in rows:
         seq = row["sequence_id"]
-        # Check linkage to previous entry
         if row["prev_hash"] != expected_prev:
             return {
                 "status": "TAMPERED",
                 "broken_sequence_id": seq,
-                "error": f"Invalid prev_hash at sequence {seq}. Found {row['prev_hash']}, expected {expected_prev}",
+                "error": f"Broken chain link at seq {seq}",
             }
 
-        # Recalculate row's hash
         recalculated = compute_entry_hash(
             seq_id=seq,
             timestamp=row["timestamp"],
@@ -425,7 +447,7 @@ def verify_audit_chain() -> dict:
             return {
                 "status": "TAMPERED",
                 "broken_sequence_id": seq,
-                "error": f"Hash mismatch at sequence {seq}. Stored: {row['entry_hash']}, Recalculated: {recalculated}",
+                "error": f"Tampered digest at seq {seq}",
             }
 
         expected_prev = row["entry_hash"]
@@ -434,5 +456,5 @@ def verify_audit_chain() -> dict:
         "status": "VALID",
         "total_entries": len(rows),
         "latest_hash": expected_prev,
-        "message": "Audit log is 100% cryptographically intact; no tampering detected.",
+        "message": "Audit chain is 100% cryptographically intact.",
     }
