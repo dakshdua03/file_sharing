@@ -1,4 +1,4 @@
-"""SQLite database setup and helpers for MVP Slice 2 (AES-GCM Encryption)."""
+"""SQLite database setup for Slice 3: Users, Files, and Envelope Key Shares."""
 
 import sqlite3
 from pathlib import Path
@@ -16,22 +16,43 @@ def get_conn() -> sqlite3.Connection:
 
 
 def init_db() -> None:
-    """Create local storage directory and required database tables."""
+    """Create local storage directory and schema for Slice 3."""
     STORAGE_DIR.mkdir(parents=True, exist_ok=True)
     with get_conn() as conn:
-        conn.execute(
+        conn.executescript(
             """
+            CREATE TABLE IF NOT EXISTS users (
+                id TEXT PRIMARY KEY,
+                username TEXT UNIQUE NOT NULL,
+                role TEXT NOT NULL,
+                public_key_pem TEXT NOT NULL,
+                private_key_pem TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS files (
                 id TEXT PRIMARY KEY,
+                owner_id TEXT NOT NULL,
                 original_name TEXT NOT NULL,
                 content_type TEXT NOT NULL,
                 plaintext_size INTEGER NOT NULL,
                 ciphertext_size INTEGER NOT NULL,
                 storage_path TEXT NOT NULL,
                 nonce_hex TEXT NOT NULL,
-                key_hex TEXT NOT NULL,
-                created_at TEXT NOT NULL
-            )
+                created_at TEXT NOT NULL,
+                FOREIGN KEY(owner_id) REFERENCES users(id)
+            );
+
+            CREATE TABLE IF NOT EXISTS file_shares (
+                id TEXT PRIMARY KEY,
+                file_id TEXT NOT NULL,
+                recipient_id TEXT NOT NULL,
+                wrapped_key_hex TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                UNIQUE(file_id, recipient_id),
+                FOREIGN KEY(file_id) REFERENCES files(id),
+                FOREIGN KEY(recipient_id) REFERENCES users(id)
+            );
             """
         )
         conn.commit()
