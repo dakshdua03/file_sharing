@@ -1,0 +1,211 @@
+{
+  "main": {
+    "id": "f7845be34e6b00e2",
+    "type": "split",
+    "children": [
+      {
+        "id": "f0d35380e61f6bdb",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "83dc8a2f944f0841",
+            "type": "leaf",
+            "state": {
+              "type": "empty",
+              "state": {},
+              "icon": "lucide-file",
+              "title": "New tab"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "51834fbbfc2ecee2",
+    "type": "split",
+    "children": [
+      {
+        "id": "757957978c0d06bb",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "ab816eb3b7988341",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Files"
+            }
+          },
+          {
+            "id": "050f9920b8551ef0",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Search"
+            }
+          },
+          {
+            "id": "c56429fa9434a8a7",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-bookmark",
+              "title": "Bookmarks"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "d04e367b2a4f2818",
+    "type": "split",
+    "children": [
+      {
+        "id": "9688ddf0f62ecebb",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "b05289dd62144a16",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "file": "Study/01-Crypto-Basics-Primer.md",
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Backlinks"
+            }
+          },
+          {
+            "id": "99cf02a91fa681f2",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "file": "Study/01-Crypto-Basics-Primer.md",
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Outgoing links"
+            }
+          },
+          {
+            "id": "710881c32d1b64ba",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Tags"
+            }
+          },
+          {
+            "id": "51d19b88b2854041",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "All properties"
+            }
+          },
+          {
+            "id": "324c5917ee061bc5",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "file": "Study/01-Crypto-Basics-Primer.md",
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Outline"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Open quick switcher": false,
+      "graph:Open graph view": false,
+      "canvas:Create new canvas": false,
+      "daily-notes:Open today's daily note": false,
+      "templates:Insert template": false,
+      "command-palette:Open command palette": false,
+      "bases:Create new base": false
+    }
+  },
+  "active": "83dc8a2f944f0841",
+  "lastOpenFiles": [
+    "mvp/__pycache__/main.cpython-313.pyc",
+    "mvp/__pycache__/db.cpython-313.pyc",
+    "mvp/__pycache__",
+    "mvp/README.md",
+    "mvp/main.py",
+    "mvp/db.py",
+    "mvp/requirements.txt",
+    "mvp",
+    "Study/02-Research-Papers-Breakdown.md",
+    "Study/01-Crypto-Basics-Primer.md",
+    "Study/00-Start-Here.md",
+    "Study/03-Project-Roadmap.md",
+    "file:/home/dakshdua/UOH/sem_3/QC/unit1_study/FORMULA_SHEET.md",
+    "file:/home/dakshdua/UOH/sem_3/QC/unit1_study/NOTES.md",
+    "file:/home/dakshdua/UOH/sem_3/QC/unit1_study/RESOURCES.md",
+    "file:/home/dakshdua/UOH/sem_3/QC/unit1_practical/DRILLS.md",
+    "Study/Lab/README.md",
+    "Study/Lab/__pycache__/06_blockchain_and_cid.cpython-313.pyc",
+    "Study/Lab/__pycache__/05_secret_sharing_and_access_polynomial.cpython-313.pyc",
+    "Study/Lab/__pycache__/04_envelope_encryption.cpython-313.pyc",
+    "Study/Lab/__pycache__/03_ecdsa_and_ecdh.cpython-313.pyc"
+  ]
+}

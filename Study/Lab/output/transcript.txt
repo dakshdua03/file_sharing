@@ -1,0 +1,254 @@
+
+======================================================================
+  01. HASHES (fingerprints) and AES (the padlock)
+======================================================================
+
+--- 1. SHA-256: same input -> same fingerprint, tiny change -> totally new ---
+  SHA-256('hello')             2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824
+  SHA-256('hello!')            ce06092fb948d9ffac7d1a376e404b26b7575bcc11ee05a4615fef4fec3a308b
+  SHA-256('Hello')             185f8db32271fe25f561a6fc938b2e264306ec304eda518007d1764826381969
+  Notice: 'hello' vs 'hello!' vs 'Hello' share no visible pattern.
+  That avalanche effect is what makes hashes useful for integrity.
+
+--- 2. Hashing a big thing is cheap and works on any size ---
+  1 MB random blob             26ca6d5e109085c3d6100864d6edce44a6d32a8c3718a1dcc1b5de28836b4d2f
+  The output is always 32 bytes (256 bits), no matter the input size.
+
+--- 3. AES-256-GCM: one key locks AND unlocks ---
+  AES key (32 bytes)           7cb0188915e0f642122c49386e3f4f7085fed1d3f2e85e5849b10387858eea8b
+  nonce / IV (12 bytes)        216fd6113e3524d3c7c262c2
+  plaintext                    CSE department exam questions - top secret
+  ciphertext + GCM tag         702c4c1f2e9b4422a61f33e1badfca7ad933c4eb...79206178
+  stored size                  58 bytes = 42 msg + 16 tag
+  [OK] decrypt -> 'CSE department exam questions - top secret'
+
+--- 4. Tamper with one ciphertext byte: GCM detects it ---
+  [OK] tampering rejected by the authentication tag
+
+--- 5. Why you MUST never reuse a nonce (the classic beginner bug) ---
+  With the same key+nonce, XOR of the two ciphertexts equals XOR of
+  the two plaintexts. An attacker can recover the message.
+  c1 XOR c2                    00000000000000000008000000000000000000000000000003030b4244
+  m1 XOR m2                    00000000000000000008000000000000000000000000000003030b4244
+  [!] Same result -> nonce reuse leaks the plaintext.
+  Rule: fresh random nonce for every encryption under the same key.
+
+======================================================================
+  02. RSA: a public key everyone can use, a private key only you have
+======================================================================
+
+--- 1. RSA from scratch with tiny numbers (the real maths, no library) ---
+  Choose two primes p and q.
+  p                            61
+  q                            53
+  n = p * q (modulus)          3233
+  phi = (p-1)(q-1)             3120
+  e (public exponent)          17
+  d = e^-1 mod phi (private)   2753
+
+  Public key  = (n, e)  -> can be given to anyone
+  Private key = (n, d)  -> only you
+
+  message (as a number)        65
+  encrypt: c = m^e mod n       2790
+  decrypt: m = c^d mod n       65
+  [OK] The same number came back. That is all RSA encryption is.
+  Real RSA uses n with ~2048 bits, so factoring n is infeasible.
+
+--- 2. Generate a real 2048-bit RSA key pair ---
+  modulus n                    2048 bits
+  public exponent e            65537
+  private exponent d           2041 bits
+  prime p                      1024 bits
+  prime q                      1024 bits
+  Security rests on: given n, nobody can factor it back into p and q.
+
+  private file                 output/rsa_private.pem
+  public file                  output/rsa_public.pem
+  private PEM line 1           -----BEGIN PRIVATE KEY-----
+  public PEM line 1            -----BEGIN PUBLIC KEY-----
+  [!] Never share the private PEM. The public PEM is safe to publish.
+
+--- 3. Encrypt a small secret (here: an AES key) with the PUBLIC key ---
+  AES key to protect           bad7fe0ff69fd27a520ffca05fc2bd81a1df68b200174fa6e55cce6dd47a6d28
+  RSA-OAEP ciphertext          7723ba0b0ab3550ae5f89dfc259b155e...8a2b3b9c
+  ciphertext size              256 bytes (one 2048-bit block)
+  [OK] decrypted with private key -> bad7fe0ff69fd27a520ffca05fc2bd81a1df68b200174fa6e55cce6dd47a6d28
+  That is why RSA is used to protect KEYS, not files:
+
+--- 4. Try to encrypt a 500-byte file directly with RSA -> impossible ---
+  max bytes per 2048-bit RSA block 190
+  [OK] library refused: Encryption failed
+  [!] Big files need AES. RSA only wraps the small AES key (envelope encryption).
+
+--- 5. Digital signature: sign with PRIVATE key, verify with PUBLIC key ---
+  document                     Exam paper v1 - approved
+  signature size               256 bytes
+  [OK] signature verifies: document is authentic and unchanged
+  [OK] tampered document rejected: verification failed
+
+======================================================================
+  03. ECC: same job as RSA, much smaller keys (ECDSA + ECDH)
+======================================================================
+
+--- 1. Generate a P-256 elliptic-curve key pair ---
+  curve                        SECP256R1 (aka P-256 / prime256v1)
+  private key                  256 bits
+  public point x               256 bits
+  public point y               256 bits
+  A public key is literally a point (x, y) on the curve.
+  The private key is the number of times a start point was added to itself.
+
+--- 2. Key size comparison vs RSA at the same ~128-bit security level ---
+  ECC P-256 public key (DER)   91 bytes
+  RSA-2048 public key (DER)    294 bytes
+  ratio                        RSA key is 3x bigger
+
+--- 3. ECDSA signature: sign with private, verify with public ---
+  document                     Grade sheet - final
+  signature (DER)              3045022027c3428969fcc16f9d65451ef1588dfb...06dd8b72
+  signature size               71 bytes (RSA was 256)
+  [OK] signature verifies
+  [OK] tampered document rejected
+
+--- 4. ECDH: two people derive the SAME secret without sending it ---
+  Alice computes               990c45f2a7d94fea16998a92...7f10631a
+  Bob computes                 990c45f2a7d94fea16998a92...7f10631a
+  [OK] shared secret is identical on both sides
+  An eavesdropper has both public keys but cannot compute this value.
+  AES key derived from it      cc2039b16de7d798e56f0ddd9bed8e4bdeca7b972bdbd1394007aabe67763a76
+  That is how TLS turns a key exchange into a fast AES session key.
+
+======================================================================
+  04. Envelope encryption: encrypt file with AES, key with RSA
+======================================================================
+
+--- 1. Create a 'file' to share ---
+  plaintext file               output/exam_paper.txt (218.8 KB)
+  first line                   UNIVERSITY EXAM COMMITTEE - CONFIDENTIAL
+
+--- 2. Two recipients each have an RSA key pair ---
+  Alice public key             294 bytes
+  Bob public key               294 bytes
+
+--- 3. Encrypt the FILE once with a random AES key ---
+  AES file key                 f212d808bb79e3f6144cbf483c4db9fa5ca4ddce2f47f26299f491e49e1d9da3
+  nonce                        42cb4dee9557b2a0ec1d3f9c
+  encrypted file saved         output/exam_paper.txt.enc (218.8 KB)
+  what a server sees           42cb4dee9557b2a0ec1d3f9ca99787697f0876e3f05958b7...bbdf802b
+
+--- 4. Wrap the SAME AES key once per recipient with RSA ---
+  wrapped key for Alice        256 bytes -> output/exam_paper.key.alice.enc
+  wrapped key for Bob          256 bytes -> output/exam_paper.key.bob.enc
+  One encrypted file, N tiny wrapped keys. This is why RSA is only used
+  on the key, not on every copy of the file.
+
+--- 5. Alice downloads the file + her wrapped key and decrypts ---
+  [OK] Alice unwrapped the AES key: f212d808bb79e3f6144cbf483c4db9fa5ca4ddce2f47f26299f491e49e1d9da3
+  [OK] Alice decrypted the file: 224000 bytes, matches=True
+
+--- 6. Bob's wrapped key is useless to Alice ---
+  [OK] RSA-OAEP rejects it: only Bob's private key can unwrap his copy
+
+--- 7. The storage server cannot read the file ---
+  server bytes                 42cb4dee9557b2a0ec1d3f9ca99787697f0876e3...61df7033
+  [!] Without the AES key, these bytes are just noise.
+  This is exactly Paper A's idea: AES encrypts the file, key distribution
+  is the hard problem (Paper A solves it with an access polynomial).
+
+======================================================================
+  05. Secret sharing and Paper A's access polynomial
+======================================================================
+
+--- 1. Shamir 3-of-5: split a secret into 5 shares ---
+  secret                       07eae6d357dddd159f6747c60722fa86a576ddb028190bad...41e71746
+  share 1                      0e4f5f7982f3c1df0abd40ddabb6abc7f77ae48c6be571ee...8b083c70
+  share 2                      7ec6fb33b46027cb8938c888d27e9340354e5c45a38045a3...a0ae3947
+  share 3                      5951ba01ec230edb1ad9dec77b7ab0ef5ef144dbcee986cd...82d90df1
+  share 4                      1def9be42a3c770dbfa08399a6ab04d574639e4eee213569...3188ba5b
+  share 5                      4ca0a0da6eac6063778cb6ff540f8ef275a5689f0127517a...acbd3e72
+  Each share is one point on a random degree-2 curve.
+  The secret is the value of that curve at x = 0.
+
+--- 2. Any 3 shares rebuild the secret ---
+  using shares                 1, 3, 5
+  [OK] reconstructed secret matches
+
+--- 3. Only 2 shares are not enough ---
+  value from 2 shares          1dd7c3bf51875bf28c41b93284eec44fb9a76cd3344a9e39...75623f86
+  [OK] it is NOT the secret; infinitely many curves fit 2 points
+  That is why a degree-2 polynomial needs 3 points.
+
+--- 4. Paper A style access polynomial ---
+  alice's secret Ki            929986c03c94e573bba6e83f4babfc34b6c02b7558218ac8...b9c05c68
+  bob's secret Ki              5c685fbcbab5f1b8147e44eafc085534867e15af25556ab4...c004dd25
+  carol's secret Ki            a582626b9512303cba0e07380d2a728bbe6b1a94ca5e97fa...eaae37d4
+  dave's secret Ki             1a5225bb421472ef1fdbdb44a6b8d7681a7460224c8415d1...765e3516
+  file key Kc                  438f0286ba9ae49dfdb07c72ad1514056d390390408b3a302520a328a99a496d
+  random nonce r               08c73acc540634c202fa7a7b53933f25ff048a43402dd50b...32ee273b
+  Each user's public point is h(Ki, r) = SHA-256(r || Ki) mod p.
+  h(alice's Ki, r)             36f8fcfff12efd1170683c4fd8da54b8f9f07a172f8389f5...c0d58dd8
+  h(bob's Ki, r)               538315df7cf73a4987382e48596fecd929652bee37d45aa3...f2f4896f
+  h(carol's Ki, r)             58ff4589e8c4bafca08576c8eee5d55181d3f74558da124f...f8eb1e69
+  h(dave's Ki, r)              1457e516e202bf1866bcbf884e628f3382022a343389ad1a...8ae7eb44
+  published polynomial degree  4
+  constant term (Kc hidden here) 77a023ab4d3585bf2d9973325028d85af5c2750b77f69d01...729987e6
+  coefficient of x^1           17e56edd65cf569dbef10bda69faa3dbe56e4a680ba13b3f...fdeda5f3
+  The coefficients are the public 'KeyInfo' metadata.
+
+--- 5. A valid user recovers Kc with their own Ki ---
+  [OK] alice: f(h(Ki,r)) = Kc
+  [OK] bob: f(h(Ki,r)) = Kc
+  [OK] carol: f(h(Ki,r)) = Kc
+  [OK] dave: f(h(Ki,r)) = Kc
+
+--- 6. A non-member gets a meaningless number ---
+  [OK] outsider's point does not yield Kc
+
+--- 7. Revoke 'bob': new Kc, new r, rebuild from the remaining 3 ---
+  new Kc                       709f3b5e30d6a998db2b0d18d69a826dce696a558e951ba9bcf1cf4a6ad1df1e
+  [OK] alice still works with their OLD Ki (no re-keying needed)
+  [OK] carol still works with their OLD Ki (no re-keying needed)
+  [OK] dave still works with their OLD Ki (no re-keying needed)
+  [OK] bob (revoked) computes a wrong value, not the new Kc
+  [!] In Paper A these coefficients are protected with ABE, not posted publicly.
+  This demo shows the algebra of recovery + revocation, not full security.
+
+======================================================================
+  06. Blockchain (unerasable log) and IPFS CIDs (content addresses)
+======================================================================
+
+--- 1. Build a tiny chain: each block stores the previous block's hash ---
+  block 0                      prev=0000000000000000...00000000  hash=5840050586ebb437...34f64e76
+    data: genesis: university file-sharing system
+  block 1                      prev=5840050586ebb437...34f64e76  hash=572146a53aff18f1...4344047a
+    data: alice uploaded exam.pdf CID=bafy...aaa
+  block 2                      prev=572146a53aff18f1...4344047a  hash=eb663b4cad1b3a8a...ed07c6fa
+    data: alice granted bob access until 2026-11-01
+  block 3                      prev=eb663b4cad1b3a8a...ed07c6fa  hash=a7207a05b48f0816...04b8b799
+    data: bob downloaded exam.pdf at 2026-10-19T10:00Z
+  [OK] all links and hashes are consistent
+
+--- 2. Try to secretly edit block 1 (change bob's access time) ---
+  block 1 now says             alice granted bob access until 2030-01-01
+  [FAIL] block 1 hash does not match its contents
+  Block 1's stored hash no longer matches its contents.
+  Even if the attacker recomputed block 1's hash, block 2 still
+  contains the OLD hash, so the break would move one block forward.
+  [OK] restored: chain valid again
+
+--- 3. IPFS-style CID: the address IS the fingerprint ---
+  content A                    lecture notes week 1: RSA and ECC
+  CID(A)                       bafkreiamxh3xcps4zyeapfgqd3tmqesyksb2hlyypo5yivcrricuwnmwdm
+  CID(A) again                 bafkreiamxh3xcps4zyeapfgqd3tmqesyksb2hlyypo5yivcrricuwnmwdm
+  [OK] same content always gives the same CID (deduplication)
+  content B (one extra dot)    lecture notes week 1: RSA and ECC.
+  CID(B)                       bafkreigk6e32s5fs62r4at35trse3n6habcb43hnnast6bwjmmzshszqmu
+  [OK] one changed character gives a completely different CID
+  This is a real CIDv1(raw, sha2-256), same format IPFS uses.
+  A blockchain can store this tiny CID; IPFS stores the big file.
+
+--- 4. Files on chain vs hashes on chain ---
+  file size                    33 bytes
+  CID length                   59 characters
+  [!] Put the CID on-chain, keep the file off-chain. Storage is expensive.
